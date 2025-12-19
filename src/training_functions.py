@@ -111,6 +111,9 @@ def train_predictor(train_loader, val_loader, wrapped_model: ModelWrapper, num_e
                     targets = targets.to(device)
                     r2_loss = csiro_r2_loss(preds, targets)
                     mse_loss = mse(preds, targets)
+                    r2_loss_vals.append(r2_loss.item())
+                    mse_vals.append(mse_loss.item())
+
                 mean_r2_loss = sum(r2_loss_vals) / len(r2_loss_vals)
                 mean_r2 = 1 - mean_r2_loss
                 mean_mse = sum(mse_vals) / len(mse_vals)
