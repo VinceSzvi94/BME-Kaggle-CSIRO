@@ -16,7 +16,7 @@ class CSIRODataset(Dataset):
         self.img_dir = img_dir
         self.used_imgs = used_imgs
         self.transform = transform
-        self.df = pd.read_csv(os.path.join(data_dir, "train_csv"))
+        self.df = pd.read_csv(os.path.join(data_dir, "train.csv"))
     
     def __len__(self):
         return len(self.used_imgs)
