@@ -40,11 +40,11 @@ class CSIRODataset(Dataset):
         return input_image, target
 
 class CSIRODataModule:
-    def __init__(self, data_dir="data", img_dir="train", train_split=0.9):
+    def __init__(self, data_dir="data", img_dir="train", image_resize=(512, 1024), train_split=0.9):
         self.data_dir = data_dir
         self.img_dir = img_dir
         self.transform = transforms.Compose([
-            transforms.Resize((512, 1024)),  # (height, width)
+            transforms.Resize(image_resize),  # (height, width)
             transforms.ToTensor(),
         ])
 

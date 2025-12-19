@@ -19,9 +19,9 @@ def csiro_r2(preds, targets, weights=None):
         weights = torch.tensor(TARGET_WEIGHTS, device=preds.device)
     else:
         weights = torch.tensor(weights, device=preds.device)
-    SS_res = torch.sum(weights * (targets - preds)**2, dim=0)
-    global_weighted_mean = torch.sum(weights * targets, dim=0) / torch.sum(weights, dim=0)
-    SS_tot = torch.sum(weights * (targets - global_weighted_mean)**2, dim=0)
+    SS_res = torch.sum(weights * (targets - preds)**2)
+    global_weighted_mean = torch.sum(weights * targets) / torch.sum(weights)
+    SS_tot = torch.sum(weights * (targets - global_weighted_mean)**2)
     r2_scores = 1 - (SS_res / (SS_tot + 1e-8))  # Add epsilon to avoid division by zero
     return r2_scores
 
@@ -38,7 +38,7 @@ def train_predictor(train_loader, val_loader, wrapped_model: ModelWrapper, num_e
     # Initialize wandb if enabled
     if use_wandb:
         wandb.init(
-            name=f"csiro_training_{time.strftime("%Y%m%d-%H%M%S")}",
+            name=f"csiro_training_{time.strftime('%Y%m%d-%H%M%S')}",
             project="kaggle-csiro", 
             config={
             "num_epochs": num_epochs,
@@ -57,7 +57,7 @@ def train_predictor(train_loader, val_loader, wrapped_model: ModelWrapper, num_e
 
     for epoch in range(1, num_epochs + 1):
         wrapped_model.train()
-        loop = tqdm.tqdm(train_loader, desc=f"Pretrain Epoch {epoch}/{num_epochs}")
+        loop = tqdm.tqdm(train_loader, desc=f"Epoch {epoch}/{num_epochs}")
         epoch_r2_loss = 0
         epoch_mse = 0
         num_batches = 0
@@ -133,6 +133,6 @@ def train_predictor(train_loader, val_loader, wrapped_model: ModelWrapper, num_e
 
 def save_models(model: ModelWrapper):
     os.makedirs("models", exist_ok=True)
-    save_name = f"models/{model.get_architecture_name()}_{time.strftime("%Y%m%d-%H%M%S")}.pth"
+    save_name = f"models/{model.get_architecture_name()}_{time.strftime('%Y%m%d-%H%M%S')}.pth"
     torch.save(model.state_dict(), save_name)
     print(f"Models saved as {save_name}")

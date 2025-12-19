@@ -22,17 +22,24 @@ class ModelWrapper(nn.Module):
 
     def forward(self, img):
         # img shape: (Batch, 3, H, W)
+        # print(f"Debug: Input image shape: {img.shape}")
         
         # 1. Unfold into patches
         # Output shape: (B, C*tilesize*tilesize, N_tiles)
         x = self.unfold(img)  
+        # print(f"Debug: shape after unfold: {x.shape}")
         
         # 2. Reshape to be a batch of standard images
         x = x.transpose(1, 2) # (B, N_tiles, C*tilesize*tilesize)
         b, n_patches, features = x.shape
         
         # Collapse Batch and N_tiles together for the CNN
-        x = x.view(b * n_patches, 3, self.tile_size, self.tile_size)
+        x = x.reshape(b * n_patches, 3, self.tile_size, self.tile_size)
+        # print(f"Debug: Input to model shape: {x.shape}")
+        # for i in range(x.shape[0]):
+        #     # save image for debugging
+        #     from torchvision.utils import save_image
+        #     save_image(x[i], f"debug/debug_input_tile_{i}.png")
         
         # 3. Pass through the model
         # batched_out shape: (Batch * N_tiles, 5)
@@ -40,7 +47,8 @@ class ModelWrapper(nn.Module):
         
         # 4. Separate Batch and Tiles again
         # Shape: (Batch, N_tiles, 5)
-        out_unflat = batched_out.view(b, n_patches, -1)
+        out_unflat = batched_out.reshape(b, n_patches, -1)
+        # print(f"Debug: Output from model shape (before summation): {out_unflat.shape}")
         
         # Sum over the tiles (dim 1)
         # We sum across the 'n_patches' dimension to get total grams per image
