@@ -16,7 +16,7 @@ class ResidualBlock(nn.Module):
         return x + self.block(x)
 
 class ResNet_RB(nn.Module):
-    def __init__(self, num_res_blocks=8, input_size=(64, 64), num_outputs=5):
+    def __init__(self, num_res_blocks=8, input_size=(64, 64), linear_layers=[512, 256], num_outputs=5):
         super().__init__()
 
         self.initial = nn.Sequential(
@@ -35,17 +35,19 @@ class ResNet_RB(nn.Module):
 
         # Calculate flattened size
         flattened_size = 64 * input_size[0] * input_size[1]
+
+        linear_layers_2 = [flattened_size] + linear_layers
+        layer_components = []
+        for i in range(len(linear_layers)):
+            layer_components.append(nn.Linear(linear_layers_2[i], linear_layers_2[i+1]))
+            layer_components.append(nn.ReLU())
+            layer_components.append(nn.Dropout(0.5 if i == 0 else 0.3))
         
         # Linear layers for regression
         self.fc = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(flattened_size, 512),
-            nn.ReLU(),
-            nn.Dropout(0.5),
-            nn.Linear(512, 256),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(256, num_outputs)  # No activation for regression
+            *layer_components,
+            nn.Linear(linear_layers_2[-1], num_outputs)  # No activation for regression
         )
     
     # this function is to identify the architecture in logging

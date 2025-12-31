@@ -41,7 +41,7 @@ class RRDB(nn.Module):
         return out * 0.2 + x
 
 class ResNet_RRDB(nn.Module):
-    def __init__(self, in_channels=3, num_res_blocks=8, input_size=(64, 64), num_outputs=5): 
+    def __init__(self, in_channels=3, num_res_blocks=8, input_size=(64, 64), linear_layers=[512, 256], num_outputs=5): 
         # ESRGAN typically uses 23 blocks (vs 16 in SRGAN)
         super(ResNet_RRDB, self).__init__()
 
@@ -57,16 +57,18 @@ class ResNet_RRDB(nn.Module):
         # Calculate flattened size
         flattened_size = 64 * input_size[0] * input_size[1]
         
+        linear_layers_2 = [flattened_size] + linear_layers
+        layer_components = []
+        for i in range(len(linear_layers)):
+            layer_components.append(nn.Linear(linear_layers_2[i], linear_layers_2[i+1]))
+            layer_components.append(nn.ReLU())
+            layer_components.append(nn.Dropout(0.5 if i == 0 else 0.3))
+        
         # Linear layers for regression
         self.fc = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(flattened_size, 512),
-            nn.ReLU(),
-            nn.Dropout(0.5),
-            nn.Linear(512, 256),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(256, num_outputs)  # No activation for regression
+            *layer_components,
+            nn.Linear(linear_layers_2[-1], num_outputs)  # No activation for regression
         )
     
     def get_architecture_name(self):
