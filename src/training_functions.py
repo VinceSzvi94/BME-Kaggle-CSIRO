@@ -31,7 +31,14 @@ def csiro_r2_loss(preds, targets, weights=None):
 # =========================================================
 # TRAINING
 # =========================================================
-def train_predictor(train_loader, val_loader, wrapped_model: ModelWrapper, num_epochs=10, lr=1e-4, use_wandb=False):
+def train_predictor(
+        train_loader, val_loader, 
+        wrapped_model: ModelWrapper, 
+        num_epochs=10, 
+        lr=1e-4, 
+        weigh_decay=1e-4, # use 0 to turn off regularization 
+        patience=3, 
+        use_wandb=False):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print("Using device:", device)
 
@@ -45,15 +52,21 @@ def train_predictor(train_loader, val_loader, wrapped_model: ModelWrapper, num_e
             "device": device,
             "lr": lr,
             "architecture": f"{wrapped_model.get_architecture_name()}",
+            "patience": patience,
         })
         wandb.watch(wrapped_model, log="all", log_freq=10)
 
     # train
     print(f"Training {wrapped_model.get_architecture_name()}...")
 
-    optim = torch.optim.Adam(wrapped_model.parameters(), lr=lr)
+    optim = torch.optim.Adam(wrapped_model.parameters(), lr=lr, weight_decay=weigh_decay)
     mse = nn.MSELoss()
     mse.to(device)
+
+    # Track best model
+    best_val_r2_loss = float('inf')
+    best_model_state = None
+    epochs_without_improvement = 0
 
     for epoch in range(1, num_epochs + 1):
         wrapped_model.train()
@@ -109,6 +122,7 @@ def train_predictor(train_loader, val_loader, wrapped_model: ModelWrapper, num_e
                 for input_img, targets in val_loader:
                     input_img = input_img.to(device)
                     targets = targets.to(device)
+                    preds = wrapped_model(input_img)
                     r2_loss = csiro_r2_loss(preds, targets)
                     mse_loss = mse(preds, targets)
                     r2_loss_vals.append(r2_loss.item())
@@ -118,6 +132,16 @@ def train_predictor(train_loader, val_loader, wrapped_model: ModelWrapper, num_e
                 mean_r2 = 1 - mean_r2_loss
                 mean_mse = sum(mse_vals) / len(mse_vals)
                 print(f"Validation after epoch {epoch}: R2={mean_r2:.2f}, R_loss={mean_r2_loss:.2f}, mse={mean_mse:.2f}")
+
+                # Save best model
+                if mean_r2_loss < best_val_r2_loss:
+                    best_val_r2_loss = mean_r2_loss
+                    best_model_state = wrapped_model.state_dict().copy()
+                    epochs_without_improvement = 0
+                    print(f"✓ New best model found! R² loss: {best_val_r2_loss:.4f}")
+                else:
+                    epochs_without_improvement += 1
+                    print(f"No improvement for {epochs_without_improvement} epoch(s)")
                 
                 if use_wandb:
                     wandb.log({
@@ -125,9 +149,21 @@ def train_predictor(train_loader, val_loader, wrapped_model: ModelWrapper, num_e
                         "val/r2": mean_r2,
                         "val/r2_loss": mean_r2_loss,
                         "val/mse": mean_mse,
+                        "val/best_r2_loss": best_val_r2_loss,
+                        "val/epochs_without_improvement": epochs_without_improvement,
                     })
+                
+                # Early stopping check
+                if epochs_without_improvement >= patience:
+                    print(f"\nEarly stopping triggered after {epoch} epochs (patience={patience})")
+                    break
         else:
             print(f"Epoch {epoch}: validation skipped (no pairs).")
+    
+    # Load best model state before finishing
+    if best_model_state is not None:
+        wrapped_model.load_state_dict(best_model_state)
+        print(f"\nLoaded best model with validation R² loss: {best_val_r2_loss:.4f}")
 
     if use_wandb:
         wandb.finish()
@@ -139,3 +175,4 @@ def save_models(model: ModelWrapper):
     save_name = f"models/{model.get_architecture_name()}_{time.strftime('%Y%m%d-%H%M%S')}.pth"
     torch.save(model.state_dict(), save_name)
     print(f"Models saved as {save_name}")
+
