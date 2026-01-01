@@ -68,20 +68,22 @@ def train_predictor(
     train_loader = dataloader.train_dataloader(batch_size=batch_size, num_workers=0)
     val_loader = dataloader.val_dataloader(batch_size=batch_size, num_workers=0)
 
-    weights_tensor = torch.tensor(TARGET_WEIGHTS, dtype=torch.float32)
-    weights_tensor = weights_tensor.to(device)
+    weights_tensor = torch.tensor(TARGET_WEIGHTS, dtype=torch.float32, device=device)
+    
     train_means = dataloader.get_train_yw()
-    train_means = train_means.to(device)
+    train_means = torch.as_tensor(train_means, dtype=torch.float32, device=device)
     train_yw_ = (weights_tensor * train_means).sum() / weights_tensor.sum()
+    
     val_means = dataloader.get_val_yw()
-    val_means = val_means.to(device)
+    val_means = torch.as_tensor(val_means, dtype=torch.float32, device=device)
     val_yw_ = (weights_tensor * val_means).sum() / weights_tensor.sum()
 
     train_means_log1p = dataloader.get_train_yw_log1p()
-    train_means_log1p = train_means_log1p.to(device)
+    train_means_log1p = torch.as_tensor(train_means_log1p, dtype=torch.float32, device=device)
     train_yw_log1p_ = (weights_tensor * train_means_log1p).sum() / weights_tensor.sum()
+    
     val_means_log1p = dataloader.get_val_yw_log1p()
-    val_means_log1p = val_means_log1p.to(device)
+    val_means_log1p = torch.as_tensor(val_means_log1p, dtype=torch.float32, device=device)
     val_yw_log1p_ = (weights_tensor * val_means_log1p).sum() / weights_tensor.sum()
 
     # train
