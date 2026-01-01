@@ -18,7 +18,7 @@ class CSIRODataset(Dataset):
         self.used_imgs = used_imgs
         self.transform = transform
         self.df = pd.read_csv(os.path.join(data_dir, "train.csv"))
-        self.df.loc[:,"target_log1p"] = np.log1p(self.df["target"])
+        self.df.loc[:,"target_log1p"] = np.log1p(self.df["target"].values)
     
     def __len__(self):
         return len(self.used_imgs)
