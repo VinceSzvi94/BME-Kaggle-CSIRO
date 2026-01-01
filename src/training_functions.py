@@ -37,7 +37,7 @@ def csiro_r2_loss(preds, targets, yw_,  weights=None):
 # TRAINING
 # =========================================================
 def train_predictor(
-        train_loader, val_loader, 
+        dataloader, batch_size, 
         wrapped_model: ModelWrapper, 
         num_epochs=10, 
         lr=1e-4, 
@@ -64,6 +64,20 @@ def train_predictor(
         })
         wandb.watch(wrapped_model, log="all", log_freq=10)
 
+    # set up dataloaders and global averages
+    train_loader = dataloader.train_dataloader(batch_size=batch_size, num_workers=0)
+    val_loader = dataloader.val_dataloader(batch_size=batch_size, num_workers=0)
+
+    train_means = dataloader.get_train_yw()
+    train_yw_ = (TARGET_WEIGHTS * train_means).sum() / sum(TARGET_WEIGHTS)
+    val_means = dataloader.get_val_yw()
+    val_yw_ = (TARGET_WEIGHTS * val_means).sum() / sum(TARGET_WEIGHTS)
+
+    train_means_log1p = dataloader.get_train_yw_log1p()
+    train_yw_log1p_ = (TARGET_WEIGHTS * train_means_log1p).sum() / sum(TARGET_WEIGHTS)
+    val_means_log1p = dataloader.get_val_yw_log1p()
+    val_yw_log1p_ = (TARGET_WEIGHTS * val_means_log1p).sum() / sum(TARGET_WEIGHTS)
+
     # train
     print(f"Training {wrapped_model.get_architecture_name()}...")
 
@@ -80,6 +94,7 @@ def train_predictor(
         wrapped_model.train()
         loop = tqdm.tqdm(train_loader, desc=f"Epoch {epoch}/{num_epochs}")
         epoch_r2_loss = 0
+        epoch_r2_loss_log1p = 0
         epoch_mse = 0
         num_batches = 0
         
@@ -90,34 +105,49 @@ def train_predictor(
             optim.zero_grad()
             preds = wrapped_model(input_img)
 
+            preds_log1p = torch.log1p(preds)
+            targets_log1p = torch.log1p(targets)
+
             # loss (calc mse too only for logging)
-            r2_loss = csiro_r2_loss(preds, targets)
+            r2_loss = csiro_r2_loss(preds, targets, train_yw_)
+            r2_loss_log1p = csiro_r2_loss(preds_log1p, targets_log1p, train_yw_log1p_)
             mse_loss = mse(preds, targets)
 
             # backpropagation
-            r2_loss.backward()
+            if use_log_loss:
+                r2_loss_log1p.backward()
+            else:
+                r2_loss.backward()
             optim.step()
 
             epoch_r2_loss += r2_loss.item()
+            epoch_r2_loss_log1p += r2_loss_log1p.item()
             epoch_mse += mse_loss.item()
             num_batches += 1
 
             loop.set_postfix({
                 "R2_loss": f"{r2_loss.item():.4f}",
+                "R2_loss_log1p": f"{r2_loss_log1p.item():.4f}",
                 "mse": f"{mse_loss.item():.2f}",
             })
 
             # Log batch metrics
             if use_wandb:
-                wandb.log({"batch_r2_loss": r2_loss.item(), "batch_mse": mse_loss.item()})
+                wandb.log({
+                    "batch_r2_loss": r2_loss.item(), 
+                    "batch_r2_loss_log1p": r2_loss_log1p.item(), 
+                    "batch_mse": mse_loss.item()
+                })
 
         # Log epoch metrics
         avg_r2_loss = epoch_r2_loss / num_batches
+        avg_r2_loss_log1p = epoch_r2_loss_log1p / num_batches
         avg_mse = epoch_mse / num_batches
         if use_wandb:
             wandb.log({
                 "epoch": epoch,
-                "avg_r2_loss": avg_r2_loss,
+                "avg_r2_loss": avg_r2_loss, 
+                "avg_r2_loss_log1p": avg_r2_loss_log1p, 
                 "avg_mse": avg_mse
             })
 
@@ -126,23 +156,30 @@ def train_predictor(
             wrapped_model.eval()
             with torch.no_grad():
                 r2_loss_vals = []
+                r2_loss_log1p_vals = []
                 mse_vals = []
                 for input_img, targets in val_loader:
                     input_img = input_img.to(device)
                     targets = targets.to(device)
                     preds = wrapped_model(input_img)
-                    r2_loss = csiro_r2_loss(preds, targets)
+                    targets_log1p = torch.log1p(targets)
+                    preds_log1p = torch.log1p(preds)
+
+                    r2_loss = csiro_r2_loss(preds, targets, val_yw_)
+                    r2_loss_log1p = csiro_r2_loss(preds_log1p, targets_log1p, val_yw_log1p_)
                     mse_loss = mse(preds, targets)
                     r2_loss_vals.append(r2_loss.item())
+                    r2_loss_log1p_vals.append(r2_loss_log1p.item())
                     mse_vals.append(mse_loss.item())
 
                 mean_r2_loss = sum(r2_loss_vals) / len(r2_loss_vals)
+                mean_r2_loss_log1p = sum(r2_loss_log1p_vals) / len(r2_loss_log1p_vals)
                 mean_r2 = 1 - mean_r2_loss
                 mean_mse = sum(mse_vals) / len(mse_vals)
-                print(f"Validation after epoch {epoch}: R2={mean_r2:.2f}, R_loss={mean_r2_loss:.2f}, mse={mean_mse:.2f}")
+                print(f"Validation after epoch {epoch}: R2={mean_r2:.2f}, R_loss={mean_r2_loss:.2f}, R_loss_log1p={mean_r2_loss_log1p:.2f}, mse={mean_mse:.2f}")
 
                 # Save best model
-                if mean_r2_loss < best_val_r2_loss:
+                if mean_r2_loss < best_val_r2_loss: # here use normal r2 loss as csiro scoring also uses it instead of log1p version
                     best_val_r2_loss = mean_r2_loss
                     best_model_state = wrapped_model.state_dict().copy()
                     epochs_without_improvement = 0
@@ -156,6 +193,7 @@ def train_predictor(
                         "val/epoch": epoch,
                         "val/r2": mean_r2,
                         "val/r2_loss": mean_r2_loss,
+                        "val/r2_loss_log1p": mean_r2_loss_log1p,
                         "val/mse": mean_mse,
                         "val/best_r2_loss": best_val_r2_loss,
                         "val/epochs_without_improvement": epochs_without_improvement,
