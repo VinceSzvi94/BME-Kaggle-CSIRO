@@ -43,12 +43,18 @@ class CSIRODataset(Dataset):
     
     def get_yw(self):
         used_df = self.df[self.df["image_path"].isin(["train/" + img for img in self.used_imgs])]
-        yws_list = [used_df[used_df["target_name"] == tname]["target"].mean() for tname in TARGET_NAMES]
+        yws_list = []
+        for tname in TARGET_NAMES:
+            mean_val = used_df[used_df["target_name"] == tname]["target"].mean()
+            yws_list.append(float(mean_val))  # Convert to Python float
         return torch.tensor(yws_list, dtype=torch.float32)
-    
+
     def get_yw_log1p(self):
         used_df = self.df[self.df["image_path"].isin(["train/" + img for img in self.used_imgs])]
-        yws_list = [used_df[used_df["target_name"] == tname]["target_log1p"].mean() for tname in TARGET_NAMES]
+        yws_list = []
+        for tname in TARGET_NAMES:
+            mean_val = used_df[used_df["target_name"] == tname]["target_log1p"].mean()
+            yws_list.append(float(mean_val))  # Convert to Python float
         return torch.tensor(yws_list, dtype=torch.float32)
 
 class CSIRODataModule:
