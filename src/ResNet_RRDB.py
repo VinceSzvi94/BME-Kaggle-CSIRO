@@ -45,6 +45,9 @@ class ResNet_RRDB(nn.Module):
         # ESRGAN typically uses 23 blocks (vs 16 in SRGAN)
         super(ResNet_RRDB, self).__init__()
 
+        self.input_size = input_size
+        self.linear_layers = linear_layers
+
         self.initial = nn.Conv2d(in_channels, 64, kernel_size=3, stride=1, padding=1)
 
         # RRDB blocks
@@ -72,7 +75,7 @@ class ResNet_RRDB(nn.Module):
         )
     
     def get_architecture_name(self):
-        return f"ResNet_RRDB_{len(self.res_blocks)}blocks"
+        return f"ResNet_RRDB_{len(self.res_blocks)}blocks_{self.input_size[0]}x{self.input_size[1]}input_{'-'.join(map(str, self.linear_layers))}linearlayers"
 
     def forward(self, x):
         initial = self.initial(x)

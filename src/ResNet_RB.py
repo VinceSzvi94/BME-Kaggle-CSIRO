@@ -18,6 +18,8 @@ class ResidualBlock(nn.Module):
 class ResNet_RB(nn.Module):
     def __init__(self, num_res_blocks=8, input_size=(64, 64), linear_layers=[512, 256], num_outputs=5):
         super().__init__()
+        self.input_size = input_size
+        self.linear_layers = linear_layers
 
         self.initial = nn.Sequential(
             nn.Conv2d(3, 64, kernel_size=9, stride=1, padding=4),
@@ -52,7 +54,7 @@ class ResNet_RB(nn.Module):
     
     # this function is to identify the architecture in logging
     def get_architecture_name(self):
-        return f"ResNet_RB_{len(self.res_blocks)}blocks"
+        return f"ResNet_RB_{len(self.res_blocks)}blocks_{self.input_size[0]}x{self.input_size[1]}input_{'-'.join(map(str, self.linear_layers))}linearlayers"
 
     def forward(self, x):
         initial = self.initial(x)
