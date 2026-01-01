@@ -68,7 +68,7 @@ def train_predictor(
     train_loader = dataloader.train_dataloader(batch_size=batch_size, num_workers=0)
     val_loader = dataloader.val_dataloader(batch_size=batch_size, num_workers=0)
 
-    weights_tensor = torch.tensor(TARGET_WEIGHTS, device=device)
+    weights_tensor = torch.tensor(TARGET_WEIGHTS, dtype=torch.float32).to(device)
     train_means = dataloader.get_train_yw().to(device)
     train_yw_ = (weights_tensor * train_means).sum() / weights_tensor.sum()
     val_means = dataloader.get_val_yw().to(device)
