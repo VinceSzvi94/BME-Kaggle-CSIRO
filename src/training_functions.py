@@ -41,7 +41,7 @@ def train_predictor(
         wrapped_model: ModelWrapper, 
         num_epochs=10, 
         lr=1e-4, 
-        weigh_decay=1e-4, # use 0 to turn off regularization 
+        weight_decay=1e-4, # use 0 to turn off regularization 
         use_log_loss=False,
         patience=3, 
         use_wandb=False):
@@ -57,7 +57,7 @@ def train_predictor(
             "num_epochs": num_epochs,
             "device": device,
             "lr": lr,
-            "weigh_decay": weigh_decay,
+            "weight_decay": weight_decay,
             "use_log_loss": use_log_loss,
             "architecture": f"{wrapped_model.get_architecture_name()}",
             "patience": patience,
@@ -68,20 +68,21 @@ def train_predictor(
     train_loader = dataloader.train_dataloader(batch_size=batch_size, num_workers=0)
     val_loader = dataloader.val_dataloader(batch_size=batch_size, num_workers=0)
 
+    weights_tensor = torch.tensor(TARGET_WEIGHTS, device=device)
     train_means = dataloader.get_train_yw()
-    train_yw_ = (TARGET_WEIGHTS * train_means).sum() / sum(TARGET_WEIGHTS)
+    train_yw_ = (weights_tensor * train_means).sum() / weights_tensor.sum()
     val_means = dataloader.get_val_yw()
-    val_yw_ = (TARGET_WEIGHTS * val_means).sum() / sum(TARGET_WEIGHTS)
+    val_yw_ = (weights_tensor * val_means).sum() / weights_tensor.sum()
 
     train_means_log1p = dataloader.get_train_yw_log1p()
-    train_yw_log1p_ = (TARGET_WEIGHTS * train_means_log1p).sum() / sum(TARGET_WEIGHTS)
+    train_yw_log1p_ = (weights_tensor * train_means_log1p).sum() / weights_tensor.sum()
     val_means_log1p = dataloader.get_val_yw_log1p()
-    val_yw_log1p_ = (TARGET_WEIGHTS * val_means_log1p).sum() / sum(TARGET_WEIGHTS)
+    val_yw_log1p_ = (weights_tensor * val_means_log1p).sum() / weights_tensor.sum()
 
     # train
     print(f"Training {wrapped_model.get_architecture_name()}...")
 
-    optim = torch.optim.Adam(wrapped_model.parameters(), lr=lr, weight_decay=weigh_decay)
+    optim = torch.optim.Adam(wrapped_model.parameters(), lr=lr, weight_decay=weight_decay)
     mse = nn.MSELoss()
     mse.to(device)
 
