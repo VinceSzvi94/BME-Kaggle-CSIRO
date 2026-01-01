@@ -47,7 +47,7 @@ class CSIRODataset(Dataset):
         for tname in TARGET_NAMES:
             mean_val = used_df[used_df["target_name"] == tname]["target"].mean()
             yws_list.append(float(mean_val))  # Convert to Python float
-        return torch.tensor(yws_list, dtype=torch.float32)
+        return yws_list
 
     def get_yw_log1p(self):
         used_df = self.df[self.df["image_path"].isin(["train/" + img for img in self.used_imgs])]
@@ -55,7 +55,7 @@ class CSIRODataset(Dataset):
         for tname in TARGET_NAMES:
             mean_val = used_df[used_df["target_name"] == tname]["target_log1p"].mean()
             yws_list.append(float(mean_val))  # Convert to Python float
-        return torch.tensor(yws_list, dtype=torch.float32)
+        return yws_list
 
 class CSIRODataModule:
     def __init__(self, data_dir="data", img_dir="train", image_resize=(512, 1024), train_split=0.9):
