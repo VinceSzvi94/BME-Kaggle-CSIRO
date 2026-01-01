@@ -14,19 +14,24 @@ from src.dataloader import TARGET_WEIGHTS
 # =========================================================
 # METRICS
 # =========================================================
-def csiro_r2(preds, targets, weights=None):
+def csiro_r2(preds, targets, yw_, weights=None):
     if weights is None:
         weights = torch.tensor(TARGET_WEIGHTS, device=preds.device)
     else:
         weights = torch.tensor(weights, device=preds.device)
-    SS_res = torch.sum(weights * (targets - preds)**2)
-    global_weighted_mean = torch.sum(weights * targets) / torch.sum(weights)
-    SS_tot = torch.sum(weights * (targets - global_weighted_mean)**2)
-    r2_scores = 1 - (SS_res / (SS_tot + 1e-8))  # Add epsilon to avoid division by zero
+
+    weights_expanded = weights.expand_as(targets)
+
+    # SS_res: Weighted sum of squared errors
+    ss_res = torch.sum(weights_expanded * (targets - preds)**2)
+    # SS_tot: Weighted variance of the ground truth
+    ss_tot = torch.sum(weights_expanded * (targets - yw_)**2)
+
+    r2_scores = 1 - (ss_res / (ss_tot + 1e-8))  # Add epsilon to avoid division by zero
     return r2_scores
 
-def csiro_r2_loss(preds, targets, weights=None):
-    return 1 - csiro_r2(preds, targets, weights)
+def csiro_r2_loss(preds, targets, yw_,  weights=None):
+    return 1 - csiro_r2(preds, targets, yw_, weights)
 
 # =========================================================
 # TRAINING
@@ -37,6 +42,7 @@ def train_predictor(
         num_epochs=10, 
         lr=1e-4, 
         weigh_decay=1e-4, # use 0 to turn off regularization 
+        use_log_loss=False,
         patience=3, 
         use_wandb=False):
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -51,6 +57,8 @@ def train_predictor(
             "num_epochs": num_epochs,
             "device": device,
             "lr": lr,
+            "weigh_decay": weigh_decay,
+            "use_log_loss": use_log_loss,
             "architecture": f"{wrapped_model.get_architecture_name()}",
             "patience": patience,
         })

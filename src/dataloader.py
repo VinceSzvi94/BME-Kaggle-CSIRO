@@ -1,5 +1,6 @@
 import os
 import pandas as pd
+import numpy as np
 import random
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -17,6 +18,7 @@ class CSIRODataset(Dataset):
         self.used_imgs = used_imgs
         self.transform = transform
         self.df = pd.read_csv(os.path.join(data_dir, "train.csv"))
+        self.df.loc[:,"target_log1p"] = np.log1p(self.df["target"])
     
     def __len__(self):
         return len(self.used_imgs)
@@ -38,6 +40,16 @@ class CSIRODataset(Dataset):
             target[i] = current_df.loc[current_df["target_name"] == tname, "target"].values[0]
         
         return input_image, target
+    
+    def get_yw(self):
+        used_df = self.df[self.df["image_path"].isin(["train/" + img for img in self.used_imgs])]
+        yws_list = [used_df[used_df["target_name"] == tname]["target"].mean() for tname in TARGET_NAMES]
+        return torch.tensor(yws_list, dtype=torch.float32)
+    
+    def get_yw_log1p(self):
+        used_df = self.df[self.df["image_path"].isin(["train/" + img for img in self.used_imgs])]
+        yws_list = [used_df[used_df["target_name"] == tname]["target_log1p"].mean() for tname in TARGET_NAMES]
+        return torch.tensor(yws_list, dtype=torch.float32)
 
 class CSIRODataModule:
     def __init__(self, data_dir="data", img_dir="train", image_resize=(512, 1024), train_split=0.9):
@@ -68,6 +80,18 @@ class CSIRODataModule:
             self.val_imgs, 
             transform=self.transform
         )
+
+    def get_train_yw(self):
+        return self.train_dataset.get_yw()
+    
+    def get_val_yw(self):
+        return self.val_dataset.get_yw()
+    
+    def get_train_yw_log1p(self):
+        return self.train_dataset.get_yw_log1p()
+    
+    def get_val_yw_log1p(self):
+        return self.val_dataset.get_yw_log1p()
 
     def train_dataloader(self, batch_size=8, num_workers=4):
         return DataLoader(
