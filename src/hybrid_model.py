@@ -91,6 +91,9 @@ class HybridModel(nn.Module):
         # We sum across the 'n_patches' dimension to get total grams per image
         avg_out_vit = out_unflat_vit.mean(dim=1) # Shape: (Batch, output_dim)
         avg_out_fe = out_unflat_fe.mean(dim=1) # Shape: (Batch, output_dim)
+        # L2 normalize both feature vectors
+        avg_out_vit = nn.functional.normalize(avg_out_vit, p=2, dim=1)
+        avg_out_fe = nn.functional.normalize(avg_out_fe, p=2, dim=1)
 
         # 5. Concatenate vit and fe features
         concat_out = torch.cat((avg_out_vit, avg_out_fe), dim=1)  # Shape: (Batch, vit_dim + fe_dim)

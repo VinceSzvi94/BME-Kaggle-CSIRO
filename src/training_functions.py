@@ -8,6 +8,9 @@ import tqdm
 import os, time
 import wandb
 
+from src.dataloader import CSIRODataModule
+from src.feature_extractor_wrapper import FeatureExtractorWrapper
+from src.hybrid_model import HybridModel
 from src.model_wrapper import ModelWrapper
 from src.dataloader import TARGET_WEIGHTS
 
@@ -42,7 +45,7 @@ def train_predictor(
         num_epochs=10, 
         lr=1e-4, 
         weight_decay=1e-4, # use 0 to turn off regularization 
-        use_log_loss=False,
+        # use_log_loss=False,
         patience=3, 
         use_wandb=False):
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -58,7 +61,7 @@ def train_predictor(
             "device": device,
             "lr": lr,
             "weight_decay": weight_decay,
-            "use_log_loss": use_log_loss,
+            # "use_log_loss": use_log_loss,
             "architecture": f"{wrapped_model.get_architecture_name()}",
             "patience": patience,
         })
@@ -78,13 +81,13 @@ def train_predictor(
     val_means = torch.as_tensor(val_means_list, dtype=torch.float32, device=device)
     val_yw_ = (weights_tensor * val_means).sum() / weights_tensor.sum()
 
-    train_means_log1p_list = dataloader.get_train_yw_log1p()
-    train_means_log1p = torch.as_tensor(train_means_log1p_list, dtype=torch.float32, device=device)
-    train_yw_log1p_ = (weights_tensor * train_means_log1p).sum() / weights_tensor.sum()
+    # train_means_log1p_list = dataloader.get_train_yw_log1p()
+    # train_means_log1p = torch.as_tensor(train_means_log1p_list, dtype=torch.float32, device=device)
+    # train_yw_log1p_ = (weights_tensor * train_means_log1p).sum() / weights_tensor.sum()
     
-    val_means_log1p_list = dataloader.get_val_yw_log1p()
-    val_means_log1p = torch.as_tensor(val_means_log1p_list, dtype=torch.float32, device=device)
-    val_yw_log1p_ = (weights_tensor * val_means_log1p).sum() / weights_tensor.sum()
+    # val_means_log1p_list = dataloader.get_val_yw_log1p()
+    # val_means_log1p = torch.as_tensor(val_means_log1p_list, dtype=torch.float32, device=device)
+    # val_yw_log1p_ = (weights_tensor * val_means_log1p).sum() / weights_tensor.sum()
 
     # train
     print(f"Training {wrapped_model.get_architecture_name()}...")
@@ -102,7 +105,7 @@ def train_predictor(
         wrapped_model.train()
         loop = tqdm.tqdm(train_loader, desc=f"Epoch {epoch}/{num_epochs}")
         epoch_r2_loss = 0
-        epoch_r2_loss_log1p = 0
+        # epoch_r2_loss_log1p = 0
         epoch_mse = 0
         num_batches = 0
         
@@ -118,24 +121,24 @@ def train_predictor(
 
             # loss (calc mse too only for logging)
             r2_loss = csiro_r2_loss(preds, targets, train_yw_)
-            r2_loss_log1p = csiro_r2_loss(preds_log1p, targets_log1p, train_yw_log1p_)
+            # r2_loss_log1p = csiro_r2_loss(preds_log1p, targets_log1p, train_yw_log1p_)
             mse_loss = mse(preds, targets)
 
             # backpropagation
-            if use_log_loss:
-                r2_loss_log1p.backward()
-            else:
-                r2_loss.backward()
+            # if use_log_loss:
+            #     r2_loss_log1p.backward()
+            # else:
+            r2_loss.backward()
             optim.step()
 
             epoch_r2_loss += r2_loss.item()
-            epoch_r2_loss_log1p += r2_loss_log1p.item()
+            # epoch_r2_loss_log1p += r2_loss_log1p.item()
             epoch_mse += mse_loss.item()
             num_batches += 1
 
             loop.set_postfix({
                 "R2_loss": f"{r2_loss.item():.4f}",
-                "R2_loss_log1p": f"{r2_loss_log1p.item():.4f}",
+                # "R2_loss_log1p": f"{r2_loss_log1p.item():.4f}",
                 "mse": f"{mse_loss.item():.2f}",
             })
 
@@ -143,19 +146,19 @@ def train_predictor(
             if use_wandb:
                 wandb.log({
                     "batch_r2_loss": r2_loss.item(), 
-                    "batch_r2_loss_log1p": r2_loss_log1p.item(), 
+                    # "batch_r2_loss_log1p": r2_loss_log1p.item(), 
                     "batch_mse": mse_loss.item()
                 })
 
         # Log epoch metrics
         avg_r2_loss = epoch_r2_loss / num_batches
-        avg_r2_loss_log1p = epoch_r2_loss_log1p / num_batches
+        #avg_r2_loss_log1p = epoch_r2_loss_log1p / num_batches
         avg_mse = epoch_mse / num_batches
         if use_wandb:
             wandb.log({
                 "epoch": epoch,
                 "avg_r2_loss": avg_r2_loss, 
-                "avg_r2_loss_log1p": avg_r2_loss_log1p, 
+                # "avg_r2_loss_log1p": avg_r2_loss_log1p, 
                 "avg_mse": avg_mse
             })
 
@@ -164,27 +167,27 @@ def train_predictor(
             wrapped_model.eval()
             with torch.no_grad():
                 r2_loss_vals = []
-                r2_loss_log1p_vals = []
+                # r2_loss_log1p_vals = []
                 mse_vals = []
                 for input_img, targets in val_loader:
                     input_img = input_img.to(device)
                     targets = targets.to(device)
                     preds = wrapped_model(input_img)
-                    targets_log1p = torch.log1p(targets)
-                    preds_log1p = torch.log1p(preds)
+                    # targets_log1p = torch.log1p(targets)
+                    # preds_log1p = torch.log1p(preds)
 
                     r2_loss = csiro_r2_loss(preds, targets, val_yw_)
-                    r2_loss_log1p = csiro_r2_loss(preds_log1p, targets_log1p, val_yw_log1p_)
+                    # r2_loss_log1p = csiro_r2_loss(preds_log1p, targets_log1p, val_yw_log1p_)
                     mse_loss = mse(preds, targets)
                     r2_loss_vals.append(r2_loss.item())
-                    r2_loss_log1p_vals.append(r2_loss_log1p.item())
+                    # r2_loss_log1p_vals.append(r2_loss_log1p.item())
                     mse_vals.append(mse_loss.item())
 
                 mean_r2_loss = sum(r2_loss_vals) / len(r2_loss_vals)
-                mean_r2_loss_log1p = sum(r2_loss_log1p_vals) / len(r2_loss_log1p_vals)
+                # mean_r2_loss_log1p = sum(r2_loss_log1p_vals) / len(r2_loss_log1p_vals)
                 mean_r2 = 1 - mean_r2_loss
                 mean_mse = sum(mse_vals) / len(mse_vals)
-                print(f"Validation after epoch {epoch}: R2={mean_r2:.2f}, R_loss={mean_r2_loss:.2f}, R_loss_log1p={mean_r2_loss_log1p:.2f}, mse={mean_mse:.2f}")
+                print(f"Validation after epoch {epoch}: R2={mean_r2:.2f}, R_loss={mean_r2_loss:.2f}, mse={mean_mse:.2f}") # R_loss_log1p={mean_r2_loss_log1p:.2f}, ")
 
                 # Save best model
                 if mean_r2_loss < best_val_r2_loss: # here use normal r2 loss as csiro scoring also uses it instead of log1p version
@@ -201,7 +204,7 @@ def train_predictor(
                         "val/epoch": epoch,
                         "val/r2": mean_r2,
                         "val/r2_loss": mean_r2_loss,
-                        "val/r2_loss_log1p": mean_r2_loss_log1p,
+                        # "val/r2_loss_log1p": mean_r2_loss_log1p,
                         "val/mse": mean_mse,
                         "val/best_r2_loss": best_val_r2_loss,
                         "val/epochs_without_improvement": epochs_without_improvement,
@@ -229,4 +232,49 @@ def save_models(model: ModelWrapper):
     save_name = f"models/{model.get_architecture_name()}_{time.strftime('%Y%m%d-%H%M%S')}.pth"
     torch.save(model.state_dict(), save_name)
     print(f"Models saved as {save_name}")
+
+
+def train():
+    # Initialize wandb run
+    wandb.init()
+    config = wandb.config
+    
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    # Setup data
+    data_dir = os.path.join(os.getcwd(), "data")
+    dataloader = CSIRODataModule(data_dir=data_dir, image_resize=(448, 896))
+    dataloader.setup()
+    
+    # Create model with sweep parameters
+    fe_model = FeatureExtractorWrapper(
+        model_name=config.fe_model_name, 
+        target_dim=config.target_dim, 
+        dropout_rate=config.dropout_rate, 
+        trainable=config.fe_trainable
+    )
+    
+    hybrid_model = HybridModel(
+        dino_model_name=config.dino_model_name,
+        fe_model=fe_model, 
+        tilesize=config.tile_size,
+        linear_layers=config.linear_layers,
+        num_outputs=5
+    )
+    
+    # Train
+    hybrid_model.to(device)
+    hybrid_model = train_predictor(
+        dataloader=dataloader,
+        batch_size=config.batch_size,
+        wrapped_model=hybrid_model,
+        num_epochs=16,  # Fixed for sweep
+        lr=config.lr,
+        weight_decay=config.weight_decay,
+        patience=3, # shut down early if no improvement
+        use_wandb=True  # Must be True for sweeps
+    )
+
+if __name__ == "__main__":
+    train()
 
