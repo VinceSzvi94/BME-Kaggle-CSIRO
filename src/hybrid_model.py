@@ -27,7 +27,13 @@ class HybridModel(nn.Module):
         self.fe_model = fe_model
 
         # final regression layers
-        final_input_dim = self.dino_model.embed_dim + fe_model.model.fc[-1].out_features
+        if hasattr(fe_model.model, 'fc'):
+            fe_output_dim = fe_model.model.fc[-1].out_features
+        elif hasattr(fe_model.model, 'classifier'):
+            fe_output_dim = fe_model.model.classifier[-1].out_features
+        else:
+            raise AttributeError("Feature extractor model has neither 'fc' nor 'classifier' attribute")
+        final_input_dim = self.dino_model.embed_dim + fe_output_dim
         linear_layers_2 = [final_input_dim] + linear_layers
         layer_components = []
         for i in range(len(linear_layers)):
@@ -40,13 +46,14 @@ class HybridModel(nn.Module):
             *layer_components,
             nn.Linear(linear_layers_2[-1], num_outputs)  # No activation for regression
         )
+        self.lin_layers = linear_layers
 
         self.tile_size = tilesize
         self.unfold = nn.Unfold(kernel_size=tilesize, stride=tilesize-overlap)
     
     # model name for logging
     def get_architecture_name(self):
-        return f"Hybrid_{self.dino_model_name}_{self.fe_model.get_architecture_name()}_{self.tile_size}x{self.tile_size}_lin{'-'.join(map(str, self.reg_layers))}"
+        return f"Hybrid_{self.dino_model_name}_{self.fe_model.get_architecture_name()}_{self.tile_size}x{self.tile_size}_lin{'-'.join(map(str, self.lin_layers))}"
 
     def forward(self, img):
         # img shape: (Batch, 3, H, W)
