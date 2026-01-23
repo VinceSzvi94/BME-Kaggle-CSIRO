@@ -1,3 +1,4 @@
+from xml.parsers.expat import model
 import torch
 import torch.nn as nn
 from torchvision import models, utils
@@ -46,6 +47,7 @@ def train_predictor(
         num_epochs=10, 
         lr=1e-4, 
         weight_decay=1e-4, # use 0 to turn off regularization 
+        max_norm=1.0,
         # use_log_loss=False,
         patience=3, 
         use_wandb=False):
@@ -61,6 +63,7 @@ def train_predictor(
             "num_epochs": num_epochs,
             "device": device,
             "lr": lr,
+            "max_norm": max_norm,
             "weight_decay": weight_decay,
             # "use_log_loss": use_log_loss,
             "architecture": f"{wrapped_model.get_architecture_name()}",
@@ -130,6 +133,7 @@ def train_predictor(
             #     r2_loss_log1p.backward()
             # else:
             r2_loss.backward()
+            nn.utils.clip_grad_norm_(wrapped_model.parameters(), max_norm=max_norm)
             optim.step()
 
             epoch_r2_loss += r2_loss.item()
@@ -276,6 +280,7 @@ def train_sweep():
             wrapped_model=hybrid_model,
             num_epochs=16,  # Fixed for sweep
             lr=config.lr,
+            max_norm=config.max_norm,
             weight_decay=config.weight_decay,
             patience=3, # shut down early if no improvement
             use_wandb=True  # Must be True for sweeps
