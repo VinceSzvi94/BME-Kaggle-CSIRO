@@ -7,6 +7,7 @@ import math
 import tqdm
 import os, time
 import wandb
+import gc
 
 from src.dataloader import CSIRODataModule
 from src.feature_extractor_wrapper import FeatureExtractorWrapper
@@ -234,9 +235,13 @@ def save_models(model: ModelWrapper):
     print(f"Models saved as {save_name}")
 
 
-def train():
+def train_sweep():
+    # cleanup
+    gc.collect()
+    torch.cuda.empty_cache()
+
     # Initialize wandb run
-    wandb.init()
+    run = wandb.init()
     config = wandb.config
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -263,18 +268,27 @@ def train():
     )
     
     # Train
-    hybrid_model.to(device)
-    hybrid_model = train_predictor(
-        dataloader=dataloader,
-        batch_size=config.batch_size,
-        wrapped_model=hybrid_model,
-        num_epochs=16,  # Fixed for sweep
-        lr=config.lr,
-        weight_decay=config.weight_decay,
-        patience=3, # shut down early if no improvement
-        use_wandb=True  # Must be True for sweeps
-    )
+    try:
+        hybrid_model.to(device)
+        hybrid_model = train_predictor(
+            dataloader=dataloader,
+            batch_size=config.batch_size,
+            wrapped_model=hybrid_model,
+            num_epochs=16,  # Fixed for sweep
+            lr=config.lr,
+            weight_decay=config.weight_decay,
+            patience=3, # shut down early if no improvement
+            use_wandb=True  # Must be True for sweeps
+        )
+    except Exception as e:
+        print(f"Error during training: {e}")
+        wandb.log({"val/r2_loss": np.inf}) # log bad result to avoid sweep getting stuck
+    finally:
+        # clear GPU memory, use it when training stopped
+        gc.collect()
+        torch.cuda.empty_cache()
+        run.finish()
 
 if __name__ == "__main__":
-    train()
+    train_sweep()
 
