@@ -125,4 +125,5 @@ class FeatureExtractorWrapper(nn.Module):
         return self.model_name
     
     def forward(self, x):
-        return self.model(x)
+        x_base = self.base_model(x)
+        return self.new_layer(x_base)
