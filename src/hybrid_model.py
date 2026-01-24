@@ -6,7 +6,7 @@ from src.feature_extractor_wrapper import FeatureExtractorWrapper
 DINO_MODELS = ['dinov2_vits14', 'dinov2_vitb14']
 
 class HybridModel(nn.Module):
-    def __init__(self, dino_model_name: str, fe_model: FeatureExtractorWrapper, tilesize=224, overlap=0, reg_layers=[512, 256], reg_activation=nn.ReLU(), num_outputs=5):
+    def __init__(self, dino_model_name: str, fe_model: FeatureExtractorWrapper, tilesize=224, overlap=0, normalize_features=True, reg_layers=[512, 256], reg_activation=nn.ReLU(), num_outputs=5):
         super(HybridModel, self).__init__()
         
         # Enforce overlap=0 for summation tasks to avoid double-counting
@@ -47,7 +47,7 @@ class HybridModel(nn.Module):
             nn.Linear(reg_layers_2[-1], num_outputs)  # No activation for regression
         )
         self.reg_layer_sizes = reg_layers
-
+        self.normalize_features = normalize_features
         self.tile_size = tilesize
         self.unfold = nn.Unfold(kernel_size=tilesize, stride=tilesize-overlap)
     
@@ -91,9 +91,11 @@ class HybridModel(nn.Module):
         # We sum across the 'n_patches' dimension to get total grams per image
         avg_out_vit = out_unflat_vit.mean(dim=1) # Shape: (Batch, output_dim)
         avg_out_fe = out_unflat_fe.mean(dim=1) # Shape: (Batch, output_dim)
-        # L2 normalize both feature vectors
-        avg_out_vit = nn.functional.normalize(avg_out_vit, p=2, dim=1)
-        avg_out_fe = nn.functional.normalize(avg_out_fe, p=2, dim=1)
+
+        if self.normalize_features:
+            # L2 normalize both feature vectors
+            avg_out_vit = nn.functional.normalize(avg_out_vit, p=2, dim=1)
+            avg_out_fe = nn.functional.normalize(avg_out_fe, p=2, dim=1)
 
         # 5. Concatenate vit and fe features
         concat_out = torch.cat((avg_out_vit, avg_out_fe), dim=1)  # Shape: (Batch, vit_dim + fe_dim)
