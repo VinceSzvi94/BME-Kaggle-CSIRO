@@ -280,6 +280,8 @@ def train_sweep():
         dino_model_name=config.dino_model_name,
         fe_model=fe_model, 
         tilesize=config.tile_size,
+        overlap=0,
+        normalize_features=config.normalize_features,
         reg_layers=config.reg_layers,
         reg_activation=reg_activation,
         num_outputs=5
