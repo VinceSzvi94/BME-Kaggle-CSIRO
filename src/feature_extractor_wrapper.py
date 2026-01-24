@@ -25,10 +25,9 @@ MODELS = [
     'RegNet-Y-3.2GF',
 ]
 
-def modify_classifier(model, target_dim=128, dropout_rate=0.2, trainable=False):
+def modify_classifier(model, trainable=False):
     """
-    Replaces the last classifier block of a torchvision model 
-    with a Dropout + Linear layer for feature reduction.
+    Removes the last classifier block of a torchvision model.
     """
     # Set all parameters to not trainable if specified
     if not trainable:
@@ -39,20 +38,14 @@ def modify_classifier(model, target_dim=128, dropout_rate=0.2, trainable=False):
     if hasattr(model, 'fc') and isinstance(model.fc, nn.Linear):
         in_features = model.fc.in_features
         # Replace
-        model.fc = nn.Sequential(
-            nn.Dropout(p=dropout_rate),
-            nn.Linear(in_features, target_dim)
-        )
+        model.fc = nn.Identity()
         
     # 2. Handle Models with 'classifier' (MobileNet, EfficientNet, VGG)
     elif hasattr(model, 'classifier'):
         # Case A: Classifier is just a Linear layer (rare in these specific models but possible)
         if isinstance(model.classifier, nn.Linear):
             in_features = model.classifier.in_features
-            model.classifier = nn.Sequential(
-                nn.Dropout(p=dropout_rate),
-                nn.Linear(in_features, target_dim)
-            )
+            model.classifier = 0
             
         # Case B: Classifier is a Sequential block (MobileNetV2, V3, EfficientNet)
         elif isinstance(model.classifier, nn.Sequential):
@@ -73,12 +66,9 @@ def modify_classifier(model, target_dim=128, dropout_rate=0.2, trainable=False):
                         break
             
             # Replace the ENTIRE classifier block
-            model.classifier = nn.Sequential(
-                nn.Dropout(p=dropout_rate),
-                nn.Linear(in_features, target_dim)
-            )
+            model.classifier = nn.Identity()
     
-    return model
+    return model, in_features
 
 class FeatureExtractorWrapper(nn.Module):
     def __init__(self, model_name: str, target_dim=128, dropout_rate=0.2, trainable=False):
@@ -123,7 +113,13 @@ class FeatureExtractorWrapper(nn.Module):
             model = models.regnet_y_3_2gf(pretrained=True)
 
         self.model_name = model_name + f"_and_lin{target_dim}"
-        self.model = modify_classifier(model, target_dim, dropout_rate, trainable)
+        base_model, in_features = modify_classifier(model, trainable)
+        self.base_model = base_model
+        self.new_layer = nn.Sequential(
+            nn.Dropout(p=dropout_rate),
+            nn.Linear(in_features, target_dim)
+        )
+        self.trainable = trainable
     
     def get_architecture_name(self):
         return self.model_name

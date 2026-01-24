@@ -21,7 +21,10 @@ class HybridModel(nn.Module):
 
         # vit model
         self.dino_model_name = dino_model_name
-        self.dino_model = torch.hub.load('facebookresearch/dinov2', dino_model_name)
+        dino_model = torch.hub.load('facebookresearch/dinov2', dino_model_name)
+        for param in dino_model.parameters():
+            param.requires_grad = False
+        self.dino_model = dino_model
 
         # cnn model
         self.fe_model = fe_model

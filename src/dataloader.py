@@ -9,7 +9,7 @@ import torchvision.transforms as transforms
 
 TARGET_NAMES = ["Dry_Green_g", "Dry_Dead_g", "Dry_Clover_g", "GDM_g", "Dry_Total_g"]
 TARGET_WEIGHTS = [0.1, 0.1, 0.1, 0.2, 0.5]
-DATA_SPLIT_SEED = 42
+# DATA_SPLIT_SEED = 42
 
 class CSIRODataset(Dataset):
     def __init__(self, data_dir: str, img_dir: str, used_imgs: list, transform=None):
@@ -68,7 +68,7 @@ class CSIRODataModule:
 
         # list all images and create train-val split
         all_imgs = os.listdir(os.path.join(data_dir, img_dir))
-        random.seed(DATA_SPLIT_SEED)
+        # random.seed(DATA_SPLIT_SEED) everythin seeded outside!
         random.shuffle(all_imgs)
         split_idx = int(len(all_imgs) * train_split)
         self.train_imgs = all_imgs[:split_idx]
