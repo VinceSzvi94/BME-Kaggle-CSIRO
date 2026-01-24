@@ -6,7 +6,7 @@ from src.feature_extractor_wrapper import FeatureExtractorWrapper
 DINO_MODELS = ['dinov2_vits14', 'dinov2_vitb14']
 
 class HybridModel(nn.Module):
-    def __init__(self, dino_model_name: str, fe_model: FeatureExtractorWrapper, tilesize=224, overlap=0, linear_layers=[512, 256], num_outputs=5):
+    def __init__(self, dino_model_name: str, fe_model: FeatureExtractorWrapper, tilesize=224, overlap=0, reg_layers=[512, 256], reg_activation=nn.ReLU(), num_outputs=5):
         super(HybridModel, self).__init__()
         
         # Enforce overlap=0 for summation tasks to avoid double-counting
@@ -34,26 +34,26 @@ class HybridModel(nn.Module):
         else:
             raise AttributeError("Feature extractor model has neither 'fc' nor 'classifier' attribute")
         final_input_dim = self.dino_model.embed_dim + fe_output_dim
-        linear_layers_2 = [final_input_dim] + linear_layers
+        reg_layers_2 = [final_input_dim] + reg_layers
         layer_components = []
-        for i in range(len(linear_layers)):
-            layer_components.append(nn.Linear(linear_layers_2[i], linear_layers_2[i+1]))
-            layer_components.append(nn.ReLU())
+        for i in range(len(reg_layers)):
+            layer_components.append(nn.Linear(reg_layers_2[i], reg_layers_2[i+1]))
+            layer_components.append(reg_activation)
             layer_components.append(nn.Dropout(0.5 if i == 0 else 0.3))
 
         self.reg_layers = nn.Sequential(
             nn.Flatten(),
             *layer_components,
-            nn.Linear(linear_layers_2[-1], num_outputs)  # No activation for regression
+            nn.Linear(reg_layers_2[-1], num_outputs)  # No activation for regression
         )
-        self.lin_layers = linear_layers
+        self.reg_layers = reg_layers
 
         self.tile_size = tilesize
         self.unfold = nn.Unfold(kernel_size=tilesize, stride=tilesize-overlap)
     
     # model name for logging
     def get_architecture_name(self):
-        return f"Hybrid_{self.dino_model_name}_{self.fe_model.get_architecture_name()}_{self.tile_size}x{self.tile_size}_lin{'-'.join(map(str, self.lin_layers))}"
+        return f"Hybrid_{self.dino_model_name}_{self.fe_model.get_architecture_name()}_{self.tile_size}x{self.tile_size}_reg{'-'.join(map(str, self.reg_layers))}"
 
     def forward(self, img):
         # img shape: (Batch, 3, H, W)

@@ -120,8 +120,8 @@ def train_predictor(
             optim.zero_grad()
             preds = wrapped_model(input_img)
 
-            preds_log1p = torch.log1p(preds)
-            targets_log1p = torch.log1p(targets)
+            # preds_log1p = torch.log1p(preds)
+            # targets_log1p = torch.log1p(targets)
 
             # loss (calc mse too only for logging)
             r2_loss = csiro_r2_loss(preds, targets, train_yw_)
@@ -133,7 +133,8 @@ def train_predictor(
             #     r2_loss_log1p.backward()
             # else:
             r2_loss.backward()
-            nn.utils.clip_grad_norm_(wrapped_model.parameters(), max_norm=max_norm)
+            if max_norm > 0:
+                nn.utils.clip_grad_norm_(wrapped_model.parameters(), max_norm=max_norm)
             optim.step()
 
             epoch_r2_loss += r2_loss.item()
@@ -262,12 +263,25 @@ def train_sweep():
         dropout_rate=config.dropout_rate, 
         trainable=config.fe_trainable
     )
+
+    reg_activation = nn.ReLU()
+    if config.reg_activation.lower() == "relu":
+        reg_activation = nn.ReLU()
+    elif config.reg_activation.lower() == "leakyrelu":
+        reg_activation = nn.LeakyReLU()
+    elif config.reg_activation.lower() == "gelu":
+        reg_activation = nn.GELU()
+    elif config.reg_activation.lower() == "silu":
+        reg_activation = nn.SiLU()
+    else:
+        print(f"Warning: Unsupported activation '{config.reg_activation}', defaulting to ReLU.")
     
     hybrid_model = HybridModel(
         dino_model_name=config.dino_model_name,
         fe_model=fe_model, 
         tilesize=config.tile_size,
-        linear_layers=config.linear_layers,
+        reg_layers=config.reg_layers,
+        reg_activation=reg_activation,
         num_outputs=5
     )
     
@@ -278,16 +292,17 @@ def train_sweep():
             dataloader=dataloader,
             batch_size=config.batch_size,
             wrapped_model=hybrid_model,
-            num_epochs=16,  # Fixed for sweep
+            num_epochs=config.num_epochs,
             lr=config.lr,
             max_norm=config.max_norm,
             weight_decay=config.weight_decay,
-            patience=3, # shut down early if no improvement
+            patience=5, # shut down early if no improvement
             use_wandb=True  # Must be True for sweeps
         )
     except Exception as e:
         print(f"Error during training: {e}")
         wandb.log({"val/r2_loss": np.inf}) # log bad result to avoid sweep getting stuck
+        wandb.log({"val/best_r2_loss": np.inf}) # log bad result to avoid sweep getting stuck
     finally:
         # clear GPU memory, use it when training stopped
         gc.collect()
