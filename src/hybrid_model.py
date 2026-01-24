@@ -30,12 +30,7 @@ class HybridModel(nn.Module):
         self.fe_model = fe_model
 
         # final regression layers
-        if hasattr(fe_model.model, 'fc'):
-            fe_output_dim = fe_model.model.fc[-1].out_features
-        elif hasattr(fe_model.model, 'classifier'):
-            fe_output_dim = fe_model.model.classifier[-1].out_features
-        else:
-            raise AttributeError("Feature extractor model has neither 'fc' nor 'classifier' attribute")
+        fe_output_dim = fe_model.new_layer[-1].out_features
         final_input_dim = self.dino_model.embed_dim + fe_output_dim
         reg_layers_2 = [final_input_dim] + reg_layers
         layer_components = []
