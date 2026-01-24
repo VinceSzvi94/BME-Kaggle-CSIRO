@@ -246,7 +246,7 @@ def train_sweep():
     torch.cuda.empty_cache()
 
     # Initialize wandb run
-    run = wandb.init()
+    # run = wandb.init()
     config = wandb.config
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -309,7 +309,7 @@ def train_sweep():
         # clear GPU memory, use it when training stopped
         gc.collect()
         torch.cuda.empty_cache()
-        run.finish()
+        # run.finish()
 
 if __name__ == "__main__":
     train_sweep()
