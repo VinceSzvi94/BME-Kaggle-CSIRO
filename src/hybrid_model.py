@@ -46,14 +46,14 @@ class HybridModel(nn.Module):
             *layer_components,
             nn.Linear(reg_layers_2[-1], num_outputs)  # No activation for regression
         )
-        self.reg_layers = reg_layers
+        self.reg_layer_sizes = reg_layers
 
         self.tile_size = tilesize
         self.unfold = nn.Unfold(kernel_size=tilesize, stride=tilesize-overlap)
     
     # model name for logging
     def get_architecture_name(self):
-        return f"Hybrid_{self.dino_model_name}_{self.fe_model.get_architecture_name()}_{self.tile_size}x{self.tile_size}_reg{'-'.join(map(str, self.reg_layers))}"
+        return f"Hybrid_{self.dino_model_name}_{self.fe_model.get_architecture_name()}_{self.tile_size}x{self.tile_size}_reg{'-'.join(map(str, self.reg_layer_sizes))}"
 
     def forward(self, img):
         # img shape: (Batch, 3, H, W)
