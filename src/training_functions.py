@@ -4,9 +4,8 @@ import torch.nn as nn
 from torchvision import models, utils
 import torch.nn.functional as F
 import numpy as np
-import math
 import tqdm
-import os, time
+import os, time, copy
 import wandb
 import gc
 
@@ -41,172 +40,186 @@ def csiro_r2_loss(preds, targets, yw_,  weights=None):
 # TRAINING
 # =========================================================
 def train_hybrid_model(
-        dataloader, batch_size, 
-        hybrid_model: HybridModel, 
+        datamodule: CSIRODataModule, 
+        batch_size, 
+        hybrid_model_init: HybridModel, 
         num_epochs=10, 
         lr=1e-4, 
         weight_decay=1e-4, # use 0 to turn off regularization 
         max_norm=-1, # use -1 to turn off gradient clipping
         patience=3, 
         use_wandb=False):
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print("Using device:", device)
 
-    # Initialize wandb if enabled
-    if use_wandb:
-        wandb.init(
-            name=f"csiro_training_{time.strftime('%Y%m%d-%H%M%S')}",
-            project="kaggle-csiro", 
-            config={
-            "num_epochs": num_epochs,
-            "device": device,
-            "lr": lr,
-            "max_norm": max_norm,
-            "weight_decay": weight_decay,
-            "architecture": f"{hybrid_model.get_architecture_name()}",
-            "patience": patience,
-        })
-        wandb.watch(hybrid_model, log="all", log_freq=10)
+    hybrid_model_ensemble = []
+    best_losses = []
 
-    # set up dataloaders and global averages
-    train_loader = dataloader.train_dataloader(batch_size=batch_size, num_workers=0)
-    val_loader = dataloader.val_dataloader(batch_size=batch_size, num_workers=0)
+    folds = datamodule.get_kfolds(batch_size=batch_size, num_workers=0)
+    k = 1
+    for train_loader, val_loader, train_means_list, val_means_list in folds:
+        print(f"\n=== FOLD {k}/{len(folds)} ===")
+        # copy model for this fold
+        hybrid_model = copy.deepcopy(hybrid_model_init)
+        hybrid_model.to(device)
 
-    weights_tensor = torch.tensor(TARGET_WEIGHTS, dtype=torch.float32, device=device)
-    
-    train_means_list = dataloader.get_train_yw()
-    train_means = torch.as_tensor(train_means_list, dtype=torch.float32, device=device)
-    train_yw_ = (weights_tensor * train_means).sum() / weights_tensor.sum()
-    
-    val_means_list = dataloader.get_val_yw()
-    val_means = torch.as_tensor(val_means_list, dtype=torch.float32, device=device)
-    val_yw_ = (weights_tensor * val_means).sum() / weights_tensor.sum()
-
-    # train
-    print(f"Training {hybrid_model.get_architecture_name()}...")
-
-    optim = torch.optim.Adam(hybrid_model.parameters(), lr=lr, weight_decay=weight_decay)
-    mse = nn.MSELoss()
-    mse.to(device)
-
-    # Track best model
-    best_val_r2_loss = float('inf')
-    best_model_state = None
-    epochs_without_improvement = 0
-
-    for epoch in range(1, num_epochs + 1):
-        hybrid_model.train()
-
-        # put pretrained models to eval
-        hybrid_model.dino_model.eval()
-        if hybrid_model.fe_model.trainable == False:
-            hybrid_model.fe_model.base_model.eval()
-
-        loop = tqdm.tqdm(train_loader, desc=f"Epoch {epoch}/{num_epochs}")
-        epoch_r2_loss = 0
-        epoch_mse = 0
-        num_batches = 0
-        
-        for input_img, targets in loop:
-            input_img = input_img.to(device)
-            targets = targets.to(device)
-
-            optim.zero_grad()
-            preds = hybrid_model(input_img)
-
-            # loss (calc mse too only for logging)
-            r2_loss = csiro_r2_loss(preds, targets, train_yw_)
-            mse_loss = mse(preds, targets)
-
-            # backpropagation
-            r2_loss.backward()
-            if max_norm > 0:
-                nn.utils.clip_grad_norm_(hybrid_model.parameters(), max_norm=max_norm)
-            optim.step()
-
-            epoch_r2_loss += r2_loss.item()
-            epoch_mse += mse_loss.item()
-            num_batches += 1
-
-            loop.set_postfix({
-                "R2_loss": f"{r2_loss.item():.4f}",
-                "mse": f"{mse_loss.item():.2f}",
+        # Initialize wandb if enabled
+        if use_wandb:
+            wandb.init(
+                name=f"csiro_training_FOLD{k}_{time.strftime('%Y%m%d-%H%M%S')}",
+                project="kaggle-csiro", 
+                config={
+                "num_epochs": num_epochs,
+                "device": device,
+                "lr": lr,
+                "max_norm": max_norm,
+                "weight_decay": weight_decay,
+                "architecture": f"{hybrid_model.get_architecture_name()}",
+                "patience": patience,
             })
+            wandb.watch(hybrid_model, log="all", log_freq=10)
 
-            # Log batch metrics
-            if use_wandb:
-                wandb.log({
-                    "batch_r2_loss": r2_loss.item(), 
-                    "batch_mse": mse_loss.item()
+        # set up global averages
+        weights_tensor = torch.tensor(TARGET_WEIGHTS, dtype=torch.float32, device=device)
+
+        train_means = torch.as_tensor(train_means_list, dtype=torch.float32, device=device)
+        train_yw_ = (weights_tensor * train_means).sum() / weights_tensor.sum()
+
+        val_means = torch.as_tensor(val_means_list, dtype=torch.float32, device=device)
+        val_yw_ = (weights_tensor * val_means).sum() / weights_tensor.sum()
+
+        # train
+        print(f"Training {hybrid_model.get_architecture_name()}...")
+
+        optim = torch.optim.Adam(hybrid_model.parameters(), lr=lr, weight_decay=weight_decay)
+        mse = nn.MSELoss()
+        mse.to(device)
+
+        # Track best model
+        best_val_r2_loss = float('inf')
+        best_model_state = None
+        epochs_without_improvement = 0
+
+        for epoch in range(1, num_epochs + 1):
+            hybrid_model.train()
+
+            # put pretrained models to eval
+            hybrid_model.dino_model.eval()
+            if hybrid_model.fe_model.trainable == False:
+                hybrid_model.fe_model.base_model.eval()
+
+            loop = tqdm.tqdm(train_loader, desc=f"Epoch {epoch}/{num_epochs}")
+            epoch_r2_loss = 0
+            epoch_mse = 0
+            num_batches = 0
+            
+            for input_img, targets in loop:
+                input_img = input_img.to(device)
+                targets = targets.to(device)
+
+                optim.zero_grad()
+                preds = hybrid_model(input_img)
+
+                # loss (calc mse too only for logging)
+                r2_loss = csiro_r2_loss(preds, targets, train_yw_)
+                mse_loss = mse(preds, targets)
+
+                # backpropagation
+                r2_loss.backward()
+                if max_norm > 0:
+                    nn.utils.clip_grad_norm_(hybrid_model.parameters(), max_norm=max_norm)
+                optim.step()
+
+                epoch_r2_loss += r2_loss.item()
+                epoch_mse += mse_loss.item()
+                num_batches += 1
+
+                loop.set_postfix({
+                    "R2_loss": f"{r2_loss.item():.4f}",
+                    "mse": f"{mse_loss.item():.2f}",
                 })
 
-        # Log epoch metrics
-        avg_r2_loss = epoch_r2_loss / num_batches
-        avg_mse = epoch_mse / num_batches
-        if use_wandb:
-            wandb.log({
-                "epoch": epoch,
-                "avg_r2_loss": avg_r2_loss, 
-                "avg_mse": avg_mse
-            })
-
-        # Do validation
-        if val_loader is not None:
-            hybrid_model.eval()
-            with torch.no_grad():
-                r2_loss_vals = []
-                mse_vals = []
-                for input_img, targets in val_loader:
-                    input_img = input_img.to(device)
-                    targets = targets.to(device)
-                    preds = hybrid_model(input_img)
-
-                    r2_loss = csiro_r2_loss(preds, targets, val_yw_)
-                    mse_loss = mse(preds, targets)
-                    r2_loss_vals.append(r2_loss.item())
-                    mse_vals.append(mse_loss.item())
-
-                mean_r2_loss = sum(r2_loss_vals) / len(r2_loss_vals)
-                mean_r2 = 1 - mean_r2_loss
-                mean_mse = sum(mse_vals) / len(mse_vals)
-                print(f"Validation after epoch {epoch}: R2={mean_r2:.2f}, R_loss={mean_r2_loss:.2f}, mse={mean_mse:.2f}") 
-
-                # Save best model
-                if mean_r2_loss < best_val_r2_loss: 
-                    best_val_r2_loss = mean_r2_loss
-                    best_model_state = hybrid_model.state_dict().copy()
-                    epochs_without_improvement = 0
-                    print(f"✓ New best model found! R² loss: {best_val_r2_loss:.4f}")
-                else:
-                    epochs_without_improvement += 1
-                    print(f"No improvement for {epochs_without_improvement} epoch(s)")
-                
+                # Log batch metrics
                 if use_wandb:
                     wandb.log({
-                        "val/epoch": epoch,
-                        "val/r2": mean_r2,
-                        "val/r2_loss": mean_r2_loss,
-                        "val/mse": mean_mse,
-                        "val/best_r2_loss": best_val_r2_loss,
-                        "val/epochs_without_improvement": epochs_without_improvement,
+                        "batch_r2_loss": r2_loss.item(), 
+                        "batch_mse": mse_loss.item()
                     })
-                
-                # Early stopping check
-                if epochs_without_improvement >= patience:
-                    print(f"\nEarly stopping triggered after {epoch} epochs (patience={patience})")
-                    break
-        else:
-            print(f"Epoch {epoch}: validation skipped (no pairs).")
-    
-    # Load best model state before finishing
-    if best_model_state is not None:
-        hybrid_model.load_state_dict(best_model_state)
-        print(f"\nLoaded best model with validation R² loss: {best_val_r2_loss:.4f}")
 
-    if use_wandb:
-        wandb.finish()
-    
-    return hybrid_model
+            # Log epoch metrics
+            avg_r2_loss = epoch_r2_loss / num_batches
+            avg_mse = epoch_mse / num_batches
+            if use_wandb:
+                wandb.log({
+                    "epoch": epoch,
+                    "avg_r2_loss": avg_r2_loss, 
+                    "avg_mse": avg_mse
+                })
+
+            # Do validation
+            if val_loader is not None:
+                hybrid_model.eval()
+                with torch.no_grad():
+                    r2_loss_vals = []
+                    mse_vals = []
+                    for input_img, targets in val_loader:
+                        input_img = input_img.to(device)
+                        targets = targets.to(device)
+                        preds = hybrid_model(input_img)
+
+                        r2_loss = csiro_r2_loss(preds, targets, val_yw_)
+                        mse_loss = mse(preds, targets)
+                        r2_loss_vals.append(r2_loss.item())
+                        mse_vals.append(mse_loss.item())
+
+                    mean_r2_loss = sum(r2_loss_vals) / len(r2_loss_vals)
+                    mean_r2 = 1 - mean_r2_loss
+                    mean_mse = sum(mse_vals) / len(mse_vals)
+                    print(f"Validation after epoch {epoch}: R2={mean_r2:.2f}, R_loss={mean_r2_loss:.2f}, mse={mean_mse:.2f}") 
+
+                    # Save best model
+                    if mean_r2_loss < best_val_r2_loss: 
+                        best_val_r2_loss = mean_r2_loss
+                        best_model_state = hybrid_model.state_dict().copy()
+                        epochs_without_improvement = 0
+                        print(f"✓ New best model found! R² loss: {best_val_r2_loss:.4f}")
+                    else:
+                        epochs_without_improvement += 1
+                        print(f"No improvement for {epochs_without_improvement} epoch(s)")
+                    
+                    if use_wandb:
+                        wandb.log({
+                            "val/epoch": epoch,
+                            "val/r2": mean_r2,
+                            "val/r2_loss": mean_r2_loss,
+                            "val/mse": mean_mse,
+                            "val/best_r2_loss": best_val_r2_loss,
+                            "val/epochs_without_improvement": epochs_without_improvement,
+                        })
+                    
+                    # Early stopping check
+                    if epochs_without_improvement >= patience:
+                        print(f"\nEarly stopping triggered after {epoch} epochs (patience={patience})")
+                        break
+            else:
+                print(f"Epoch {epoch}: validation skipped (no pairs).")
+        
+        # Load best model state before finishing
+        if best_model_state is not None:
+            hybrid_model.load_state_dict(best_model_state)
+            print(f"\nLoaded best model with validation R² loss: {best_val_r2_loss:.4f}")
+
+        if use_wandb:
+            wandb.finish()
+
+        hybrid_model_ensemble.append(hybrid_model)
+        best_losses.append(best_val_r2_loss)
+        k += 1
+
+    print(f"\nTraining completed for all folds. Mean of best validation R² losses: {sum(best_losses) / len(best_losses) if best_losses else float('inf')}")
+
+    return hybrid_model_ensemble
 
 def save_models(model):
     os.makedirs("models", exist_ok=True)
