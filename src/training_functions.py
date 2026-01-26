@@ -47,7 +47,8 @@ def train_hybrid_model(
         lr=1e-4, 
         weight_decay=1e-4, # use 0 to turn off regularization 
         max_norm=-1, # use -1 to turn off gradient clipping
-        patience=3, 
+        patience=3,
+        do_only_fold1=False, 
         use_wandb=False):
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -215,6 +216,9 @@ def train_hybrid_model(
         best_losses.append(best_val_r2_loss)
         k += 1
 
+        if do_only_fold1:
+            break # only 1 fold for wandb sweeps
+
     cv_loss = sum(best_losses) / len(best_losses) if best_losses else float('inf')
     cv_r2 = 1 - cv_loss
     print(f"\nCross-validated R²: {cv_r2:.4f}, R² loss: {cv_loss:.4f}")
@@ -299,7 +303,8 @@ def train_sweep():
             lr=config.lr,
             max_norm=config.max_norm,
             weight_decay=config.weight_decay,
-            patience=5, # shut down early if no improvement
+            patience=6, # shut down early if no improvement
+            do_only_fold1=True, # makes sure it just tries 1 fold
             use_wandb=True  # Must be True for sweeps
         )
     except Exception as e:

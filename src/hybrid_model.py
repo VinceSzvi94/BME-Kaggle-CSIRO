@@ -3,7 +3,7 @@ import torch.nn as nn
 
 from src.feature_extractor_wrapper import FeatureExtractorWrapper
 
-DINO_MODELS = ['dinov2_vits14', 'dinov2_vitb14']
+DINO_MODELS = ['dinov2_vits14', 'dinov2_vitb14', 'dinov2_vitl14']
 
 class HybridModel(nn.Module):
     def __init__(self, dino_model_name: str, fe_model: FeatureExtractorWrapper, tilesize=224, overlap=0, normalize_features=True, reg_layers=[512, 256], reg_activation=nn.ReLU(), num_outputs=5):
