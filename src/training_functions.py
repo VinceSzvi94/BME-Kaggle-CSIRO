@@ -231,7 +231,7 @@ def save_models(model):
 
 def save_model_ensemble(model_ensemble):
     os.makedirs("models", exist_ok=True)
-    if len(model_ensemble) == 0:
+    if len(model_ensemble) == 0: 
         print("No models to save.")
         return
     ensemble_folder = f"models/ENSEMBLE_{time.strftime('%Y%m%d-%H%M%S')}"
