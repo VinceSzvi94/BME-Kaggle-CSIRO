@@ -296,13 +296,13 @@ def train_sweep():
     try:
         hybrid_model.to(device)
         hybrid_model_ensemble, cv_r2, cv_loss = train_hybrid_model(
-            dataloader=dataloader,
+            datamodule=dataloader,
             batch_size=config.batch_size,
             hybrid_model=hybrid_model,
             num_epochs=config.num_epochs,
             lr=config.lr,
-            max_norm=config.max_norm,
             weight_decay=config.weight_decay,
+            max_norm=config.max_norm,
             patience=6, # shut down early if no improvement
             do_only_fold1=True, # makes sure it just tries 1 fold
             use_wandb=True  # Must be True for sweeps
