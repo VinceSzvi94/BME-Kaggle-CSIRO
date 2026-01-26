@@ -48,6 +48,7 @@ def train_hybrid_model(
         weight_decay=1e-4, # use 0 to turn off regularization 
         max_norm=-1, # use -1 to turn off gradient clipping
         patience=3,
+        overtrain_cutoff_ratio=1.6,
         do_only_fold1=False, 
         use_wandb=False):
 
@@ -175,7 +176,7 @@ def train_hybrid_model(
                     mean_r2_loss = sum(r2_loss_vals) / len(r2_loss_vals)
                     mean_r2 = 1 - mean_r2_loss
                     mean_mse = sum(mse_vals) / len(mse_vals)
-                    print(f"Validation after epoch {epoch}: R2={mean_r2:.2f}, R_loss={mean_r2_loss:.2f}, mse={mean_mse:.2f}") 
+                    print(f"Validation after epoch {epoch}: R2={mean_r2:.3f}, R_loss={mean_r2_loss:.3f}, mse={mean_mse:.2f}") 
 
                     # Save best model
                     if mean_r2_loss < best_val_r2_loss: 
@@ -197,7 +198,11 @@ def train_hybrid_model(
                             "val/epochs_without_improvement": epochs_without_improvement,
                         })
                     
-                    # Early stopping check
+                    # Early stopping checks
+                    if (avg_r2_loss < 0.5) and (mean_r2_loss > overtrain_cutoff_ratio * avg_r2_loss):
+                        print(f"\nEarly stopping triggered after {epoch} epochs (val_loss={mean_r2_loss:.3f} >> train_loss={avg_r2_loss:.3f})")
+                        break
+
                     if epochs_without_improvement >= patience:
                         print(f"\nEarly stopping triggered after {epoch} epochs (patience={patience})")
                         break
@@ -298,12 +303,13 @@ def train_sweep():
         hybrid_model_ensemble, cv_r2, cv_loss = train_hybrid_model(
             datamodule=dataloader,
             batch_size=config.batch_size,
-            hybrid_model=hybrid_model,
+            hybrid_model_init=hybrid_model,
             num_epochs=config.num_epochs,
             lr=config.lr,
             weight_decay=config.weight_decay,
             max_norm=config.max_norm,
             patience=6, # shut down early if no improvement
+
             do_only_fold1=True, # makes sure it just tries 1 fold
             use_wandb=True  # Must be True for sweeps
         )
