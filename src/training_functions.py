@@ -229,6 +229,19 @@ def save_models(model):
     torch.save(model.state_dict(), save_name)
     print(f"Models saved as {save_name}")
 
+def save_model_ensemble(model_ensemble):
+    os.makedirs("models", exist_ok=True)
+    if len(model_ensemble) == 0:
+        print("No models to save.")
+        return
+    ensemble_folder = f"models/ENSEMBLE_{time.strftime('%Y%m%d-%H%M%S')}"
+    base_name = model_ensemble[0].get_architecture_name()
+    os.makedirs(ensemble_folder, exist_ok=True)
+    for idx, model in enumerate(model_ensemble):
+        save_name = f"{ensemble_folder}/{base_name}_fold{idx+1}.pth"
+        torch.save(model.state_dict(), save_name)
+        print(f"Model fold {idx+1} saved as {save_name}")
+
 
 def train_sweep():
     # cleanup
