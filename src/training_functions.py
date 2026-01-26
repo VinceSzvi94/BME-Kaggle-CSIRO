@@ -17,7 +17,7 @@ from src.dataloader import TARGET_WEIGHTS
 # =========================================================
 # METRICS
 # =========================================================
-def csiro_r2(preds, targets, yw_, weights=None):
+def csiro_r2(preds, targets, yw_vec, weights=None):
     if weights is None:
         weights = torch.tensor(TARGET_WEIGHTS, device=preds.device)
     else:
@@ -28,13 +28,13 @@ def csiro_r2(preds, targets, yw_, weights=None):
     # SS_res: Weighted sum of squared errors
     ss_res = torch.sum(weights_expanded * (targets - preds)**2)
     # SS_tot: Weighted variance of the ground truth
-    ss_tot = torch.sum(weights_expanded * (targets - yw_)**2)
+    ss_tot = torch.sum(weights_expanded * (targets - yw_vec)**2)
 
     r2_scores = 1 - (ss_res / (ss_tot + 1e-8))  # Add epsilon to avoid division by zero
     return r2_scores
 
-def csiro_r2_loss(preds, targets, yw_,  weights=None):
-    return 1 - csiro_r2(preds, targets, yw_, weights)
+def csiro_r2_loss(preds, targets, yw_vec,  weights=None):
+    return 1 - csiro_r2(preds, targets, yw_vec, weights)
 
 # =========================================================
 # TRAINING
@@ -81,13 +81,11 @@ def train_hybrid_model(
             wandb.watch(hybrid_model, log="all", log_freq=10)
 
         # set up global averages
-        weights_tensor = torch.tensor(TARGET_WEIGHTS, dtype=torch.float32, device=device)
-
+        # weights_tensor = torch.tensor(TARGET_WEIGHTS, dtype=torch.float32, device=device)
         train_means = torch.as_tensor(train_means_list, dtype=torch.float32, device=device)
-        train_yw_ = (weights_tensor * train_means).sum() / weights_tensor.sum()
-
+        # train_yw_ = (weights_tensor * train_means).sum() / weights_tensor.sum()
         val_means = torch.as_tensor(val_means_list, dtype=torch.float32, device=device)
-        val_yw_ = (weights_tensor * val_means).sum() / weights_tensor.sum()
+        # val_yw_ = (weights_tensor * val_means).sum() / weights_tensor.sum()
 
         # train
         print(f"Training {hybrid_model.get_architecture_name()}...")
@@ -122,7 +120,7 @@ def train_hybrid_model(
                 preds = hybrid_model(input_img)
 
                 # loss (calc mse too only for logging)
-                r2_loss = csiro_r2_loss(preds, targets, train_yw_)
+                r2_loss = csiro_r2_loss(preds, targets, train_means)
                 mse_loss = mse(preds, targets)
 
                 # backpropagation
@@ -168,7 +166,7 @@ def train_hybrid_model(
                         targets = targets.to(device)
                         preds = hybrid_model(input_img)
 
-                        r2_loss = csiro_r2_loss(preds, targets, val_yw_)
+                        r2_loss = csiro_r2_loss(preds, targets, val_means)
                         mse_loss = mse(preds, targets)
                         r2_loss_vals.append(r2_loss.item())
                         mse_vals.append(mse_loss.item())
