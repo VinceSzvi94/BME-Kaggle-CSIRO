@@ -1,5 +1,6 @@
 myenv/
 data/
+models/
 debug/
 .vscode/
 __pycache__/

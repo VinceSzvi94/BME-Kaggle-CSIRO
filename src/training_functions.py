@@ -217,9 +217,11 @@ def train_hybrid_model(
         best_losses.append(best_val_r2_loss)
         k += 1
 
-    print(f"\nTraining completed for all folds. Mean of best validation R² losses: {sum(best_losses) / len(best_losses) if best_losses else float('inf')}")
+    cv_loss = sum(best_losses) / len(best_losses) if best_losses else float('inf')
+    cv_r2 = 1 - cv_loss
+    print(f"\nCross-validated R²: {cv_r2:.4f}, R² loss: {cv_loss:.4f}")
 
-    return hybrid_model_ensemble
+    return hybrid_model_ensemble, cv_r2, cv_loss
 
 def save_models(model):
     os.makedirs("models", exist_ok=True)
@@ -278,7 +280,7 @@ def train_sweep():
     # Train
     try:
         hybrid_model.to(device)
-        hybrid_model = train_hybrid_model(
+        hybrid_model_ensemble, cv_r2, cv_loss = train_hybrid_model(
             dataloader=dataloader,
             batch_size=config.batch_size,
             hybrid_model=hybrid_model,
