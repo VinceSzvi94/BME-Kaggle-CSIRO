@@ -6,3 +6,9 @@
 [Download dataset here](https://www.kaggle.com/competitions/csiro-biomass/data)
 
 [colab notebook](https://colab.research.google.com/drive/1RQaUqiwP59qMa4pWfaXsxFN_judv0KHE?usp=sharing)
+
+Model architecture:
+
+![model_architecture](src/hybrid_model.png)
+
+Not very good performance, R2 LB: 0.51
